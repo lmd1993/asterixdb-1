@@ -105,7 +105,7 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
         this.probeKeys = keys0;// For table A
         this.buildKeys = keys1;// For table B's attribute to join with A
         this.buildKeys2=keys2;// For table B's attribute to join with C
-        this.probeKeys2=keys3;// For table c
+        this.probeKeys2=keys3;// For table C
         this.hashFunctionGeneratorFactories = hashFunctionGeneratorFactories;
         this.comparatorFactories = comparatorFactories;
         this.tuplePairComparatorFactoryProbe2Build = tupPaircomparatorFactory01;
