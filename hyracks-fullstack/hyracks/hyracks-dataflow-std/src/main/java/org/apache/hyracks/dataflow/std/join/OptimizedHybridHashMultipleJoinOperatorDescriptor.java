@@ -73,12 +73,16 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
     private final int[] buildKeys;
     private final int[] buildKeys2;
     private final int[] probeKeys2;
+    BloomFilter<String> B2Abf;
+    BloomFilter<String> B2Cbf;
+    double falsePositiveProbability = 0.1;
+    int expectedNumberOfElements = 100000;//should calculate from the size
     private final IBinaryHashFunctionFamily[] hashFunctionGeneratorFactories;
     private final IBinaryComparatorFactory[] comparatorFactories; //For in-mem HJ
     private final ITuplePairComparatorFactory tuplePairComparatorFactoryProbe2Build; //For NLJ in probe
     private final ITuplePairComparatorFactory tuplePairComparatorFactoryBuild2Probe; //For NLJ in probe
     private final IPredicateEvaluatorFactory predEvaluatorFactory;
-
+    private final String Bfile;
     private final boolean isLeftOuter;
     private final IMissingWriterFactory[] nonMatchWriterFactories;
 
@@ -90,7 +94,7 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
     private static final Logger LOGGER = Logger.getLogger(OptimizedHybridHashMultipleJoinOperatorDescriptor.class.getName());
 
     public OptimizedHybridHashMultipleJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, int frameLimit, int inputsize0,
-                                                             double factor, int[] keys0, int[] keys1,int[]keys2, int[]keys3, IBinaryHashFunctionFamily[] hashFunctionGeneratorFactories,
+                                                             double factor, int[] keys0, int[] keys1,int[]keys2, int[]keys3,String Bfile, IBinaryHashFunctionFamily[] hashFunctionGeneratorFactories,
                                                              IBinaryComparatorFactory[] comparatorFactories,
 
                                                              RecordDescriptor recordDescriptor,
@@ -106,6 +110,10 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
         this.buildKeys = keys1;// For table B's attribute to join with A
         this.buildKeys2=keys2;// For table B's attribute to join with C
         this.probeKeys2=keys3;// For table C
+        this.expectedNumberOfElements = 100000;//should calculate from the size
+        this.B2Abf=new BloomFilter<String>(falsePositiveProbability, expectedNumberOfElements);
+        this.B2Cbf=new BloomFilter<String>(falsePositiveProbability,expectedNumberOfElements);
+        this.Bfile=Bfile;//B file to get the probable item numbers; file size/ one item's size
         this.hashFunctionGeneratorFactories = hashFunctionGeneratorFactories;
         this.comparatorFactories = comparatorFactories;
         this.tuplePairComparatorFactoryProbe2Build = tupPaircomparatorFactory01;
@@ -117,12 +125,12 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
     }
 
     public OptimizedHybridHashMultipleJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, int frameLimit, int inputsize0,
-                                                             double factor, int[] keys0, int[] keys1,int[] keys2, int[] keys3, IBinaryHashFunctionFamily[] hashFunctionGeneratorFactories,
+                                                             double factor, int[] keys0, int[] keys1,int[] keys2, int[] keys3, String Bfile,IBinaryHashFunctionFamily[] hashFunctionGeneratorFactories,
                                                              IBinaryComparatorFactory[] comparatorFactories, RecordDescriptor recordDescriptor,
                                                              ITuplePairComparatorFactory tupPaircomparatorFactory01,
                                                              ITuplePairComparatorFactory tupPaircomparatorFactory10, IPredicateEvaluatorFactory predEvaluatorFactory)
             throws HyracksDataException {
-        this(spec, frameLimit, inputsize0, factor, keys0, keys1,keys2,keys3, hashFunctionGeneratorFactories, comparatorFactories,
+        this(spec, frameLimit, inputsize0, factor, keys0, keys1,keys2,keys3, Bfile, hashFunctionGeneratorFactories, comparatorFactories,
                 recordDescriptor, tupPaircomparatorFactory01, tupPaircomparatorFactory10, predEvaluatorFactory, false,
                 null);
     }
@@ -255,12 +263,21 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
 
                 @Override
                 public void nextFrame(ByteBuffer buffer) throws HyracksDataException {
-                    state.hybridHJ.build(buffer);
+                    BloomFilter<String>[] BFforB=new BloomFilter[2]; //BloomFilter[0] for A, [1] for C
+                    if(ctx.getSharedObject()!=null){
+                        Object BFObject=ctx.getSharedObject();
+                        BFforB = (BloomFilter<String>[]) BFObject;
+                    }
+                    state.hybridHJ.buildWithBF(buffer, BFforB);
+
+                    Object BFObject= (Object) BFforB;
+                    ctx.setSharedObject(BFObject);
                 }
 
                 @Override
                 public void close() throws HyracksDataException {
                     state.hybridHJ.closeBuild();
+
                     if (isFailed) {
                         state.hybridHJ.clearBuildTempFiles();
                     } else {

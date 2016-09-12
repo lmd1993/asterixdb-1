@@ -1171,6 +1171,7 @@ public class TPCDStest extends AbstractIntegrationTest {
                 new int[] {3},//table storesales
                 new int[] {3}, //table storesales
                 new int[] {15},//table catalogsales
+                "data/tpch0.001/web_sales1g.tbl",
                 new IBinaryHashFunctionFamily[] { UTF8StringBinaryHashFunctionFamily.INSTANCE, UTF8StringBinaryHashFunctionFamily.INSTANCE  },
                 new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY),PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY)}, webStoreCatalogJoinDesc, new JoinComparatorFactory(
                 PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY), 0, 1),

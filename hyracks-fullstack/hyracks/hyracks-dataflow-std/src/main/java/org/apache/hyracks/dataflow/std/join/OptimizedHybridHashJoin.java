@@ -46,6 +46,8 @@ import org.apache.hyracks.dataflow.std.structures.ISerializableTable;
 import org.apache.hyracks.dataflow.std.structures.SerializableHashTable;
 import org.apache.hyracks.dataflow.std.structures.TuplePointer;
 import org.apache.hyracks.dataflow.std.util.FrameTuplePairComparator;
+import org.apache.hyracks.dataflow.std.util.BloomFilter;
+
 
 /**
  * This class mainly applies one level of HHJ on a pair of
@@ -164,6 +166,18 @@ public class OptimizedHybridHashJoin {
 
     }
 
+//new for the bloomfilter building during the build process of join
+    public void buildWithBF(ByteBuffer buffer, BloomFilter<String>[] BFforB) throws HyracksDataException {
+        accessorBuild.reset(buffer);
+        int tupleCount = accessorBuild.getTupleCount();
+
+        for (int i = 0; i < tupleCount; ++i) {
+            int pid = buildHpc.partition(accessorBuild, i, numOfPartitions);
+            processTuple(i, pid);
+            buildPSizeInTups[pid]++;
+        }
+
+    }
     private void processTuple(int tid, int pid) throws HyracksDataException {
         while (!bufferManager.insertTuple(pid, accessorBuild, tid, tempPtr)) {
             selectAndSpillVictim(pid);
