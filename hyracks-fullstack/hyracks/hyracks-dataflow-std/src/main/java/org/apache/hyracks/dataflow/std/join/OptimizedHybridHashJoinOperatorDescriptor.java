@@ -232,6 +232,7 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
 
     }
 
+
     /*
      * Build phase of Hybrid Hash Join:
      * Creating an instance of Hybrid Hash Join, using Shapiro's formula
@@ -253,7 +254,7 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
         public IOperatorNodePushable createPushRuntime(final IHyracksTaskContext ctx,
                 IRecordDescriptorProvider recordDescProvider, final int partition, final int nPartitions) {
 
-            final RecordDescriptor buildRd = recordDescProvider.getInputRecordDescriptor(getActivityId(), 0);
+            final RecordDescriptor buildRd = recordDescProvider.getInputRecordDescriptor(getActivityId(), 0);//This is the same for different plan.
             final RecordDescriptor probeRd = recordDescProvider.getInputRecordDescriptor(probeAid, 0);
 
             final IBinaryComparator[] comparators = new IBinaryComparator[comparatorFactories.length];
@@ -272,6 +273,7 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                         hashFunctionGeneratorFactories).createPartitioner(0);
                 ITuplePartitionComputer buildHpc = new FieldHashPartitionComputerFamily(buildKeys,
                         hashFunctionGeneratorFactories).createPartitioner(0);
+
                 boolean isFailed = false;
 
                 @Override

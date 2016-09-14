@@ -19,6 +19,7 @@
 package org.apache.hyracks.dataflow.std.join;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.logging.Logger;
 
@@ -27,12 +28,7 @@ import org.apache.hyracks.api.comm.IFrame;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
-import org.apache.hyracks.api.dataflow.value.IBinaryComparator;
-import org.apache.hyracks.api.dataflow.value.IMissingWriter;
-import org.apache.hyracks.api.dataflow.value.IMissingWriterFactory;
-import org.apache.hyracks.api.dataflow.value.IPredicateEvaluator;
-import org.apache.hyracks.api.dataflow.value.ITuplePartitionComputer;
-import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
+import org.apache.hyracks.api.dataflow.value.*;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
@@ -167,12 +163,34 @@ public class OptimizedHybridHashJoin {
     }
 
 //new for the bloomfilter building during the build process of join
-    public void buildWithBF(ByteBuffer buffer, BloomFilter<String>[] BFforB) throws HyracksDataException {
+    public void buildWithBF(ByteBuffer buffer, BloomFilter<String> BFforB, int[]buildKeys) throws HyracksDataException {
         accessorBuild.reset(buffer);
         int tupleCount = accessorBuild.getTupleCount();
+        byte[] byteArray=accessorBuild.getBuffer().array();//to get string
 
         for (int i = 0; i < tupleCount; ++i) {
             int pid = buildHpc.partition(accessorBuild, i, numOfPartitions);
+            //Get the string out from the buffer and let the BF.add (String)
+
+            int h = 0;
+            int startOffset = accessorBuild.getTupleStartOffset(i);
+            int slotLength = accessorBuild.getFieldSlotsLength();
+            //for the first BF's update
+            for (int j = 0; j < buildKeys.length; ++j) {
+                int fIdx = buildKeys[j];
+                int fStart = accessorBuild.getFieldStartOffset(i, fIdx);
+                int fEnd = accessorBuild.getFieldEndOffset(i, fIdx);
+                int start=startOffset + slotLength + fStart;
+                byte[] stringByte= Arrays.copyOfRange(byteArray, start, fEnd);
+
+                String kan=new String(stringByte);
+                System.out.println(kan);
+
+                BFforB.add(stringByte);
+
+            }
+
+            //End of getting string
             processTuple(i, pid);
             buildPSizeInTups[pid]++;
         }

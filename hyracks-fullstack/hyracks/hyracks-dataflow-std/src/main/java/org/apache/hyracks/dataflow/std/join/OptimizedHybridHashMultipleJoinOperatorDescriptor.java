@@ -18,6 +18,7 @@
  */
 package org.apache.hyracks.dataflow.std.join;
 
+import javafx.scene.effect.Bloom;
 import org.apache.hyracks.api.comm.IFrame;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -180,13 +181,21 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
         private int memForJoin;
         private int numOfPartitions;
         private OptimizedHybridHashJoin hybridHJ;
+        private OptimizedHybridHashJoin hybridHJ2;
+        BloomFilter <String> BF1;
+        BloomFilter <String> BF2;
 
         public BuildAndPartitionTaskState() {
+        }
+        public void setBF(BloomFilter<String>bf1, BloomFilter<String> bf2){
+            this.BF1=bf1;
+            this.BF2=bf2;
         }
 
         private BuildAndPartitionTaskState(JobId jobId, TaskId taskId) {
             super(jobId, taskId);
         }
+
 
         @Override
         public void toBytes(DataOutput out) throws IOException {
@@ -240,6 +249,11 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
                         hashFunctionGeneratorFactories).createPartitioner(0);
                 ITuplePartitionComputer buildHpc = new FieldHashPartitionComputerFamily(buildKeys,
                         hashFunctionGeneratorFactories).createPartitioner(0);
+
+                ITuplePartitionComputer probeHpc2 = new FieldHashPartitionComputerFamily(probeKeys2,
+                        hashFunctionGeneratorFactories).createPartitioner(0);
+                ITuplePartitionComputer buildHpc2 = new FieldHashPartitionComputerFamily(buildKeys2,
+                        hashFunctionGeneratorFactories).createPartitioner(0);
                 boolean isFailed = false;
 
                 @Override
@@ -253,8 +267,12 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
                     state.hybridHJ = new OptimizedHybridHashJoin(ctx, state.memForJoin, state.numOfPartitions,
                             PROBE_REL, BUILD_REL, probeKeys, buildKeys, comparators, probeRd, buildRd, probeHpc,
                             buildHpc, predEvaluator, isLeftOuter, nonMatchWriterFactories);
+                    state.hybridHJ2=new OptimizedHybridHashJoin(ctx, state.memForJoin, state.numOfPartitions,
+                            PROBE_REL, BUILD_REL, probeKeys2, buildKeys2, comparators, probeRd, buildRd, probeHpc2,
+                            buildHpc2, predEvaluator, isLeftOuter, nonMatchWriterFactories);
 
                     state.hybridHJ.initBuild();
+                    state.hybridHJ2.initBuild();
                     if (LOGGER.isLoggable(Level.FINE)) {
                         LOGGER.fine("OptimizedHybridHashJoin is starting the build phase with " + state.numOfPartitions
                                 + " partitions using " + state.memForJoin + " frames for memory.");
@@ -268,18 +286,22 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
                         Object BFObject=ctx.getSharedObject();
                         BFforB = (BloomFilter<String>[]) BFObject;
                     }
-                    state.hybridHJ.buildWithBF(buffer, BFforB);
-
+                    state.hybridHJ.buildWithBF(buffer, BFforB[0],buildKeys);//add key to each bloom filter
+                    state.hybridHJ2.buildWithBF(buffer,BFforB[1],buildKeys2);
                     Object BFObject= (Object) BFforB;
                     ctx.setSharedObject(BFObject);
                 }
 
                 @Override
                 public void close() throws HyracksDataException {
+                    Object BFObject=ctx.getSharedObject();
+                    BloomFilter<String>[] BFforB = (BloomFilter<String>[]) BFObject;
+                    state.setBF(BFforB[0], BFforB[1]);
                     state.hybridHJ.closeBuild();
-
+                    state.hybridHJ2.closeBuild();
                     if (isFailed) {
                         state.hybridHJ.clearBuildTempFiles();
+                        state.hybridHJ2.clearBuildTempFiles();
                     } else {
                         ctx.setStateObject(state);
                         if (LOGGER.isLoggable(Level.FINE)) {
