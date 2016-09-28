@@ -148,6 +148,7 @@ public class OptimizedHybridHashMultipleJoinOperatorDescriptor extends AbstractO
 
         builder.addActivity(this, phase2);
         builder.addSourceEdge(0, phase2, 0);
+        builder.addSourceEdge(2,phase2,0);
 
         builder.addBlockingEdge(phase1, phase2);
 

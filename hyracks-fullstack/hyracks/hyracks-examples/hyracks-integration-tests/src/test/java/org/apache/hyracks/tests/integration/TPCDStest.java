@@ -445,6 +445,107 @@ public class TPCDStest extends AbstractIntegrationTest {
         File temp=new File("tpcDS2G");
         runTestAndStoreResult(spec, temp);
     }
+
+    @Test
+    public void multipleJoinwithBFTPCDs() throws Exception {
+        //Helped by BloomFilter.
+        //A JOIN B JOIN C: webSales Join storeSales Join catalogSales
+        //Scan Data A and C and build BF during the process. Stop there wait for B's BF.
+        //Send BF to MasterNode to merge them together.
+        //Broadcast BF to nodes with B.
+        //Scan B and filter B accordingly. Meanwhile, build bloomfilter of B for A and C.
+        //Merge B's BF for A and C.
+        //Filter A and C during Shuffle process of Join.
+        //According to the filtering result of A and C, get the Join Order.
+        //Join the filtered B with A(C) firstly and then with C(A).
+
+
+        JobSpecification spec = new JobSpecification();
+        long startTime = new Date().getTime();
+        FileSplit[] catalogSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File(
+                "data/tpch0.001/catalog_sales4g.tbl"))) };
+        IFileSplitProvider catalogSplitsProvider = new ConstantFileSplitProvider(catalogSplits);
+
+        FileSplit[] webSalesSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File(
+                "data/tpch0.001/web_sales4g.tbl"))) };
+
+        IFileSplitProvider webSalesSplitsProvider = new ConstantFileSplitProvider(webSalesSplits);
+        FileSplit[] storeSalesSplits = new FileSplit[] { new FileSplit(NC2_ID, new FileReference(new File(
+                "data/tpch0.001/store_sales4g.tbl"))) };
+        storeSalesSplits[0].getPartition();
+        IFileSplitProvider storeSalesSplitsProvider = new ConstantFileSplitProvider(storeSalesSplits);
+
+
+
+        FileScanOperatorDescriptor storeSaleScanner = new FileScanOperatorDescriptor(spec, storeSalesSplitsProvider,
+                new DelimitedDataTupleParserFactory(storeSaleValueParserFactories, '|'), storeSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, storeSaleScanner, NC1_ID);
+
+        FileScanOperatorDescriptor webSalescanner = new FileScanOperatorDescriptor(spec, webSalesSplitsProvider,
+                new DelimitedDataTupleParserFactory(webSaleValueParserFactories, '|'), webSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, webSalescanner, NC1_ID);
+
+        FileScanOperatorDescriptor catalogSalesScanner = new FileScanOperatorDescriptor(spec, catalogSplitsProvider,
+                new DelimitedDataTupleParserFactory(catalogSaleDescFactories, '|'), catalogSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, catalogSalesScanner, NC1_ID);
+
+
+        OptimizedHybridHashJoinOperatorDescriptor join = new OptimizedHybridHashJoinOperatorDescriptor(spec, 15, 243,
+                1.2, new int[] { 3 , 4 }, new int[] { 2 , 3 },
+                new IBinaryHashFunctionFamily[] { UTF8StringBinaryHashFunctionFamily.INSTANCE, UTF8StringBinaryHashFunctionFamily.INSTANCE  },
+                new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY),PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY)},
+                webStoreJoinDesc, new JoinComparatorFactory(
+                PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY), 0, 1),
+                new JoinComparatorFactory(PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY), 1, 0),
+                null);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
+
+
+
+        OptimizedHybridHashJoinOperatorDescriptor join2 = new OptimizedHybridHashJoinOperatorDescriptor(spec, 15, 243,
+                1.2, new int[] { 3 }, new int[] { 15},
+                new IBinaryHashFunctionFamily[] { UTF8StringBinaryHashFunctionFamily.INSTANCE },
+                new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY) },
+                webStoreCatalogJoinDesc, new JoinComparatorFactory(
+                PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY), 0, 1),
+                new JoinComparatorFactory(PointableBinaryComparatorFactory.of(UTF8StringPointable.FACTORY), 1, 0),
+                null);
+
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join2, NC1_ID);
+
+
+        ResultSetId rsId = new ResultSetId(1);
+        spec.addResultSetId(rsId);
+        IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+
+
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC1_ID);
+
+        IConnectorDescriptor webJoinConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(webJoinConn, webSalescanner, 0, join, 0);
+
+        IConnectorDescriptor storeJoinConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(storeJoinConn, storeSaleScanner, 0, join, 1);
+
+        IConnectorDescriptor webStoreJoinResultConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(webStoreJoinResultConn, join, 0, join2, 0);
+        IConnectorDescriptor thirdJoinConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(thirdJoinConn, catalogSalesScanner, 0, join2, 1);
+
+        IConnectorDescriptor joinPrinterConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(joinPrinterConn, join2, 0, printer, 0);
+
+        spec.addRoot(printer);
+        runTest(spec);
+        //System.out.println("output to " + file.getAbsolutePath());
+        long endTime = new Date().getTime();
+        System.out.println("it run for good" + (endTime - startTime)
+                + " 。" );
+        File temp=new File("tpcDS2G");
+        runTestAndStoreResult(spec, temp);
+    }
+
     @Test
     public void customerOrderCIDHybridHashJoin_CaseTPCDs() throws Exception {
         //This is the good order TPC-DS Join by Mingda Li
@@ -1179,16 +1280,10 @@ public class TPCDStest extends AbstractIntegrationTest {
                 null);
 
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
-
-
-
-
         ResultSetId rsId = new ResultSetId(1);
         spec.addResultSetId(rsId);
         IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
                 ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
-
-
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC1_ID);
 
         IConnectorDescriptor webJoinConn = new OneToOneConnectorDescriptor(spec);
@@ -1197,7 +1292,7 @@ public class TPCDStest extends AbstractIntegrationTest {
         IConnectorDescriptor storeJoinConn = new OneToOneConnectorDescriptor(spec);
         spec.connect(storeJoinConn, storeSaleScanner, 0, join, 1);
         IConnectorDescriptor catalogJoinConn = new OneToOneConnectorDescriptor(spec);
-        spec.connect(catalogJoinConn, catalogSalesScanner, 0, join, 2);
+        spec.connect(catalogJoinConn, catalogSalesScanner, 0, join, 0);
 
 
 

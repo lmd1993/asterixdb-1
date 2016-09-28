@@ -653,7 +653,8 @@ public class TPCHCustomerOrderHashJoinTest extends AbstractIntegrationTest {
                 new FieldHashPartitionComputerFactory(new int[] { 0 },
                         new IBinaryHashFunctionFactory[] { PointableBinaryHashFunctionFactory
                                 .of(UTF8StringPointable.FACTORY) }));
-        spec.connect(custJoinConn, custScanner, 0, join, 1);
+        spec.connect(custJoinConn, custScanner
+                , 0, join, 1);
 
         IConnectorDescriptor joinPrinterConn = new MToNBroadcastConnectorDescriptor(spec);
         spec.connect(joinPrinterConn, join, 0, printer, 0);
