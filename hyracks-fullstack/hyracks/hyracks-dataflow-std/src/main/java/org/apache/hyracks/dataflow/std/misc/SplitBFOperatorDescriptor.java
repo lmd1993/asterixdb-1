@@ -55,7 +55,7 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
             recordDescriptors[i] = rDesc;
         }
         this.outputMaterializationFlags = outputMaterializationFlags;
-
+        git fetch https://asterix-gerrit.ics.uci.edu/asterixdb refs/changes/30/730/23 && git checkout FETCH_HEAD
         boolean reqMaterialization = false;
         int matOutputs = 0;
         int nonMatOutputs = 0;
