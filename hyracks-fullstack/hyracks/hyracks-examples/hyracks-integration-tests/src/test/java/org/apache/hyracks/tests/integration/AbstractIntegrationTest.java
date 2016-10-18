@@ -208,6 +208,21 @@ public abstract class AbstractIntegrationTest {
         hcc.waitForCompletion(jobId);
         return true;
     }
+    protected void runTestMultiResults(JobSpecification spec, File[] file) throws Exception {
+        JobId jobId = executeTest(spec);
+
+        List<String> results;
+        for (int i = 0; i < file.length; i++) {
+            BufferedWriter output = new BufferedWriter(new FileWriter(file[i]));
+            results = readResults(spec, jobId, spec.getResultSetIds().get(i));
+            for (String str : results) {
+                output.write(str);
+            }
+            output.close();
+        }
+
+        hcc.waitForCompletion(jobId);
+    }
 
     protected void runTestAndStoreResult(JobSpecification spec, File file) throws Exception {
         JobId jobId = executeTest(spec);

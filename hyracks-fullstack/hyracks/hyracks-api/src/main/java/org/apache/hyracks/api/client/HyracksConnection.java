@@ -72,7 +72,7 @@ public final class HyracksConnection implements IHyracksClientConnection {
      *            reached.
      * @param ccPort
      *            Port to reach the Hyracks Cluster Controller at the specified
-     *            host name.
+     *            host name.ok
      * @throws Exception
      */
     public HyracksConnection(String ccHost, int ccPort) throws Exception {

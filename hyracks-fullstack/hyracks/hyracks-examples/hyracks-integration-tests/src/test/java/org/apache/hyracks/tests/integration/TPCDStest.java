@@ -41,6 +41,7 @@ import org.apache.hyracks.dataflow.common.data.marshalling.FloatSerializerDeseri
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.normalizers.UTF8StringNormalizedKeyComputerFactory;
+import org.apache.hyracks.dataflow.std.misc.SplitBFOperatorDescriptor;
 import org.apache.hyracks.dataflow.common.data.parsers.FloatParserFactory;
 import org.apache.hyracks.dataflow.common.data.parsers.IValueParserFactory;
 import org.apache.hyracks.dataflow.common.data.parsers.IntegerParserFactory;
@@ -355,6 +356,58 @@ public class TPCDStest extends AbstractIntegrationTest {
 
 
     }
+
+    @Test
+    public void tsetBFsplit() throws Exception {
+        //This is the join without order and wait for the sample result
+        final int outputArity = 2;
+
+        JobSpecification spec = new JobSpecification();
+
+        FileSplit[] storeSalesSplits = new FileSplit[] { new FileSplit(NC2_ID, new FileReference(new File(
+                "data/tpch0.001/store_sales1g.tbl"))) };
+        storeSalesSplits[0].getPartition();
+        IFileSplitProvider storeSalesSplitsProvider = new ConstantFileSplitProvider(storeSalesSplits);
+
+        File[] outputFile = new File[outputArity];
+        for (int i = 0; i < outputArity; i++) {
+            outputFile[i] = File.createTempFile("splitop", null);
+            outputFile[i].deleteOnExit();
+        }
+
+        FileScanOperatorDescriptor storeSaleScanner = new FileScanOperatorDescriptor(spec, storeSalesSplitsProvider,
+                new DelimitedDataTupleParserFactory(storeSaleValueParserFactories, '|'), storeSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, storeSaleScanner, NC1_ID);
+        int countAll=2750137;
+        SplitBFOperatorDescriptor splitOp = new SplitBFOperatorDescriptor(spec, storeSaleDesc, outputArity,new int[]{1},countAll);
+
+        IOperatorDescriptor outputOp[] = new IOperatorDescriptor[outputFile.length];
+        for (int i = 0; i < outputArity; i++) {
+            ResultSetId rsId = new ResultSetId(i);
+            spec.addResultSetId(rsId);
+
+            outputOp[i] = new ResultWriterOperatorDescriptor(spec, rsId, true, false,
+                    ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, outputOp[i], NC1_ID);
+        }
+
+        spec.connect(new OneToOneConnectorDescriptor(spec), storeSaleScanner, 0, splitOp, 0);
+        for (int i = 0; i < outputArity; i++) {
+            spec.connect(new OneToOneConnectorDescriptor(spec), splitOp, i, outputOp[i], 0);
+        }
+
+        for (int i = 0; i < outputArity; i++) {
+            spec.addRoot(outputOp[i]);
+        }
+
+        File[] temp=new File[2];
+        temp[0]=new File("split0");
+        temp[1]=new File("split1");
+        runTestMultiResults(spec, temp);
+
+    }
+
+
     @Test
     public void noOrderCIDHybridHashJoin_CaseTPCDs() throws Exception {
         //This is the join without order and wait for the sample result
@@ -363,15 +416,15 @@ public class TPCDStest extends AbstractIntegrationTest {
         JobSpecification spec = new JobSpecification();
         long startTime = new Date().getTime();
         FileSplit[] catalogSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File(
-                "data/tpch0.001/catalog_sales4g.tbl"))) };
+                "data/tpch0.001/catalog_sales1g.tbl"))) };
         IFileSplitProvider catalogSplitsProvider = new ConstantFileSplitProvider(catalogSplits);
 
         FileSplit[] webSalesSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File(
-                "data/tpch0.001/web_sales4g.tbl"))) };
+                "data/tpch0.001/web_sales1g.tbl"))) };
 
         IFileSplitProvider webSalesSplitsProvider = new ConstantFileSplitProvider(webSalesSplits);
         FileSplit[] storeSalesSplits = new FileSplit[] { new FileSplit(NC2_ID, new FileReference(new File(
-                "data/tpch0.001/store_sales4g.tbl"))) };
+                "data/tpch0.001/store_sales1g.tbl"))) };
         storeSalesSplits[0].getPartition();
         IFileSplitProvider storeSalesSplitsProvider = new ConstantFileSplitProvider(storeSalesSplits);
 
@@ -1234,6 +1287,35 @@ public class TPCDStest extends AbstractIntegrationTest {
         System.out.println("output to the file  " + file.getAbsolutePath());
     }
 
+    @Test
+    public void splitOperatorExperiment() throws Exception {
+        JobSpecification spec = new JobSpecification();
+        FileSplit[] catalogSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File(
+                "data/tpch0.001/catalog_sales1g.tbl"))) };
+        IFileSplitProvider catalogSplitsProvider = new ConstantFileSplitProvider(catalogSplits);
+
+        FileSplit[] webSalesSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File(
+                "data/tpch0.001/web_sales1g.tbl"))) };
+
+        IFileSplitProvider webSalesSplitsProvider = new ConstantFileSplitProvider(webSalesSplits);
+        FileSplit[] storeSalesSplits = new FileSplit[] { new FileSplit(NC2_ID, new FileReference(new File(
+                "data/tpch0.001/store_sales1g.tbl"))) };
+        storeSalesSplits[0].getPartition();
+        IFileSplitProvider storeSalesSplitsProvider = new ConstantFileSplitProvider(storeSalesSplits);
+        FileScanOperatorDescriptor storeSaleScanner = new FileScanOperatorDescriptor(spec, storeSalesSplitsProvider,
+                new DelimitedDataTupleParserFactory(storeSaleValueParserFactories, '|'), storeSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, storeSaleScanner, NC1_ID);
+
+        FileScanOperatorDescriptor webSalescanner = new FileScanOperatorDescriptor(spec, webSalesSplitsProvider,
+                new DelimitedDataTupleParserFactory(webSaleValueParserFactories, '|'), webSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, webSalescanner, NC1_ID);
+
+        FileScanOperatorDescriptor catalogSalesScanner = new FileScanOperatorDescriptor(spec, catalogSplitsProvider,
+                new DelimitedDataTupleParserFactory(catalogSaleDescFactories, '|'), catalogSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, catalogSalesScanner, NC1_ID);
+        //Splitter to generate two things: BF for A and C and transfer item to Join Build
+        //The Splitter needs argc: the pos of the arrity to build BF,
+    }
 
     @Test
     public void customerOrderCIDHybridHashJoin_CaseExtendMultipleJoin() throws Exception {
