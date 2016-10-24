@@ -156,10 +156,10 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
                         }
                         BF.add(fieldSelf);//add to bloomfilter
 
-                        System.out.print(fieldSelf);
+                        //System.out.print(fieldSelf);
                     }
                     try {
-                    //Convert to byteBuffer
+                        //Convert to byteBuffer
                         ByteBuffer tempForBF = ByteBuffer.wrap(new Serializer().serialize(BF));
                         FrameUtils.flushFrame(tempForBF,writers[1]);
                     }catch(Exception e){
@@ -231,14 +231,15 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
 
                 @Override
                 public void setOutputFrameWriter(int index, IFrameWriter writer, RecordDescriptor recordDesc) {
-                    writers[index] = writer;
+
+                        writers[index] = writer;
                 }
             };
         }
 
 
     }
-//The following is working for materilizing work.
+    //The following is working for materilizing work.
     private final class MaterializeReaderActivityNode extends AbstractActivityNode {
         private static final long serialVersionUID = 1L;
 
@@ -263,4 +264,3 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
         }
     }
 }
-

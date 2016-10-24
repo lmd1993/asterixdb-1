@@ -158,9 +158,12 @@ public class DataflowTest extends TestCase {
         PartitionConstraintHelper.addAbsoluteLocationConstraint(jobSpec, writeOperator, HyracksUtils.NC1_ID);
 
         jobSpec.connect(new OneToOneConnectorDescriptor(jobSpec), readOperator, 0, sortOperator, 0);
-        jobSpec.connect(new MToNPartitioningMergingConnectorDescriptor(jobSpec, new FieldHashPartitionComputerFactory(
-                new int[] { 0 }, new IBinaryHashFunctionFactory[] { RawBinaryHashFunctionFactory.INSTANCE }),
-                new int[] { 0 }, new IBinaryComparatorFactory[] { RawBinaryComparatorFactory.INSTANCE }, null),
+        jobSpec.connect(new MToNPartitioningMergingConnectorDescriptor(
+                        jobSpec,
+                        new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] { RawBinaryHashFunctionFactory.INSTANCE }),
+                        new int[] { 0 },
+                        new IBinaryComparatorFactory[] { RawBinaryComparatorFactory.INSTANCE },
+                        null),
                 sortOperator, 0, writeOperator, 0);
         jobSpec.addRoot(writeOperator);
 

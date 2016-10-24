@@ -620,6 +620,7 @@ public class PushRuntimeTest {
         AlgebricksHyracksIntegrationUtil.runJob(spec);
 
         for (int i = 0; i < outputArity; i++) {
+
             compareFiles(inputFileName, outputFile[i].getAbsolutePath());
         }
     }
@@ -834,7 +835,9 @@ public class PushRuntimeTest {
 
         String lineA, lineB;
         while ((lineA = fileA.readLine()) != null) {
+
             lineB = fileB.readLine();
+            System.out.println(lineB);
             Assert.assertEquals(lineA, lineB);
         }
         Assert.assertNull(fileB.readLine());

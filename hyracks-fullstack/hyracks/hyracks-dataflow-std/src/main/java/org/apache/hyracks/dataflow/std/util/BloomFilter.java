@@ -60,6 +60,7 @@ public class BloomFilter<E> implements Serializable {
         digestFunction = tmp;
     }
 
+
     /**
      * Constructs an empty Bloom filter. The total length of the Bloom filter will be
      * c*n.
@@ -439,4 +440,5 @@ public class BloomFilter<E> implements Serializable {
     public double getBitsPerElement() {
         return this.bitSetSize / (double)numberOfAddedElements;
     }
+
 }
