@@ -1,17 +1,11 @@
 package org.apache.hyracks.dataflow.std.misc;
 
 /**
- * Created by MingdaLi on 9/29/16.
+ * Created by MingdaLi on 10/24/16.
  */
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-import com.sun.tools.doclets.internal.toolkit.util.DocFinder;
-import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
-
-import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
-import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
-import org.apache.hyracks.dataflow.std.file.ITupleParserFactory;
 import org.apache.hyracks.dataflow.std.util.BloomFilter;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
@@ -32,15 +26,14 @@ import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputOperatorNodePushab
 import org.apache.hyracks.dataflow.std.base.AbstractUnaryOutputSourceOperatorNodePushable;
 import org.apache.hyracks.dataflow.std.util.BloomFilter;
 import org.apache.hyracks.dataflow.std.connectors.Serializer;
-import org.apache.hyracks.util.IntSerDeUtils;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
+public class SplitBFMiddleOperatorDescriptor extends AbstractOperatorDescriptor{
     private static final long serialVersionUID = 1L;
-
+    private static final int Merge_BF_ACTIVITY_ID = 0;
+    private static final int PARTITION_AND_JOIN_ACTIVITY_ID = 1;
     private final static int SPLITTER_MATERIALIZER_ACTIVITY_ID = 0;
     private final static int MATERIALIZE_READER_ACTIVITY_ID = 1;
 
@@ -52,17 +45,16 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
     private final int countAll;//Estimination of the number of items
 
 
-    public SplitBFOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor rDesc, int outputArity,int[] BFKeys, int countAll) {
+    public SplitBFMiddleOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor rDesc, int outputArity,int[] BFKeys, int countAll) {
         this(spec, rDesc, outputArity, new boolean[outputArity], BFKeys,countAll);
     }
 
-    public SplitBFOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor rDesc, int outputArity,
+    public SplitBFMiddleOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor rDesc, int outputArity,
                                      boolean[] outputMaterializationFlags, int BFKeys[], int countAll) {
         super(spec, 1, outputArity);
-        recordDescriptors[0] = rDesc;
-        recordDescriptors[1]=new RecordDescriptor(new ISerializerDeserializer[] {
-                    new UTF8StringSerializerDeserializer()});
-
+        for (int i = 0; i < outputArity; i++) {
+            recordDescriptors[i] = rDesc;
+        }
         this.outputMaterializationFlags = outputMaterializationFlags;
         boolean reqMaterialization = false;
         int matOutputs = 0;
@@ -87,10 +79,19 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
 
     @Override
     public void contributeActivities(IActivityGraphBuilder builder) {
+        MergeBFActivityNode mbf=new MergeBFActivityNode(new ActivityId(odId,Merge_BF_ACTIVITY_ID));
+        builder.addActivity(this, mbf);
+        builder.addSourceEdge(0, mbf, 0);
+
         SplitterMaterializerActivityNode sma =
                 new SplitterMaterializerActivityNode(new ActivityId(odId, SPLITTER_MATERIALIZER_ACTIVITY_ID));
         builder.addActivity(this, sma);
-        builder.addSourceEdge(0, sma, 0);
+        builder.addSourceEdge(1, sma, 0);
+
+
+        builder.addBlockingEdge(mbf,sma);
+        builder.addTargetEdge(0, sma, 0);
+
         int pipelineOutputIndex = 0;
         int activityId = MATERIALIZE_READER_ACTIVITY_ID;
         for (int i = 0; i < outputArity; i++) {
@@ -101,11 +102,128 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
                 builder.addBlockingEdge(sma, mra);
                 builder.addTargetEdge(i, mra, 0);
             } else {
-
                 builder.addTargetEdge(i, sma, pipelineOutputIndex++);
             }
         }
+    }
+    private final class MergeBFActivityNode extends AbstractActivityNode {
 
+        public MergeBFActivityNode(ActivityId id) {
+            super(id);
+        }
+
+        @Override
+        public IOperatorNodePushable createPushRuntime(final IHyracksTaskContext ctx, IRecordDescriptorProvider recordDescProvider,
+                                                       final int partition,
+                                                       int nPartitions) {
+
+            return new AbstractUnaryInputOperatorNodePushable() {
+
+                private MaterializerTaskState state;
+                private FrameTupleAccessor accessorBuild;
+                private IFrameWriter writer;
+                private boolean isOpen;
+
+                @Override
+                public void open() throws HyracksDataException {
+                    //BloomFilter bf = new BloomFilter(bufferCache, harness.getFileMapProvider(), harness.getFileReference(),keyFields);
+
+                    accessorBuild = new FrameTupleAccessor(recordDescriptors[0]);
+
+                    isOpen = true;
+                    writer.open();
+
+                }
+
+                @Override
+                public void nextFrame(ByteBuffer bufferAccessor) throws HyracksDataException {
+
+                    accessorBuild.reset(bufferAccessor);
+                    byte[] collection = accessorBuild.getBuffer().array();
+                    int tupleCount = accessorBuild.getTupleCount();
+                    for (int k = 0; k < tupleCount; k++) {
+                        int startOffset = accessorBuild.getTupleStartOffset(k);
+
+                        int slotlength = accessorBuild.getFieldSlotsLength();
+                        String fieldSelf = "";
+                        try {
+                            //fieldSelf = new String(newStr, "US-ASCII");
+                        } catch (Exception e) {
+                            System.out.print(e);
+                        }
+
+                        //System.out.print(fieldSelf);
+                    }
+                    try {
+                        //Convert to byteBuffer
+                        //ByteBuffer tempForBF = ByteBuffer.wrap(new Serializer().serialize(BF));
+                        //FrameUtils.flushFrame(tempForBF,writer);
+                    } catch (Exception e) {
+                        System.out.println(e);
+                    }
+
+                    FrameUtils.flushFrame(bufferAccessor, writer);
+
+
+                }
+
+                @Override
+                public void flush() throws HyracksDataException {
+
+                }
+
+                @Override
+                public void close() throws HyracksDataException {
+                    HyracksDataException hde = null;
+
+                    if (isOpen) {
+                        try {
+                            writer.close();
+                        } catch (Throwable th) {
+                            if (hde == null) {
+                                hde = new HyracksDataException(th);
+                            } else {
+                                hde.addSuppressed(th);
+                            }
+                        }
+                    }
+
+                    if (hde != null) {
+                        throw hde;
+                    }
+                }
+
+                @Override
+                public void fail() throws HyracksDataException {
+                    HyracksDataException hde = null;
+
+                    if (isOpen) {
+                        try {
+                            writer.fail();
+                        } catch (Throwable th) {
+                            if (hde == null) {
+                                hde = new HyracksDataException(th);
+                            } else {
+                                hde.addSuppressed(th);
+                            }
+                        }
+                    }
+
+                    if (hde != null) {
+                        throw hde;
+                    }
+                }
+
+                @Override
+                public void setOutputFrameWriter(int index, IFrameWriter writr, RecordDescriptor recordDesc) {
+
+                }
+
+
+            };
+
+
+        }
     }
 
     private final class SplitterMaterializerActivityNode extends AbstractActivityNode {
@@ -121,16 +239,15 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
             return new AbstractUnaryInputOperatorNodePushable() {
                 private MaterializerTaskState state;
                 private FrameTupleAccessor accessorBuild;
-                private FrameTupleAppender outputAppender;
                 private final IFrameWriter[] writers = new IFrameWriter[numberOfNonMaterializedOutputs];
                 private final boolean[] isOpen = new boolean[numberOfNonMaterializedOutputs];
                 double falsePositiveProbability=0.1;//Set by myself for BloomFilter
-                public  byte[] bytes;
                 BloomFilter<String> BF=new BloomFilter<String>(falsePositiveProbability,countAll);
 
                 @Override
                 public void open() throws HyracksDataException {
-                    outputAppender = new FrameTupleAppender();
+                    //BloomFilter bf = new BloomFilter(bufferCache, harness.getFileMapProvider(), harness.getFileReference(),keyFields);
+
                     accessorBuild=new FrameTupleAccessor(recordDescriptors[0]);
                     if (requiresMaterialization) {
                         state = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
@@ -145,18 +262,12 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
 
                 @Override
                 public void nextFrame(ByteBuffer bufferAccessor) throws HyracksDataException {
-                    BloomFilter<String> BF=new BloomFilter<String>(falsePositiveProbability,countAll);
-                    if(ctx.getSharedObject()!=null){
-                        Object BFObject=ctx.getSharedObject();
-                        BF= ( BloomFilter<String>) BFObject;//store indexes for sample
-                    }
                     if (requiresMaterialization) {
                         state.appendFrame(bufferAccessor);
 
                         bufferAccessor.clear();
                     }
-                    outputAppender.reset(new VSizeFrame(ctx), true);
-                            accessorBuild.reset(bufferAccessor);
+                    accessorBuild.reset(bufferAccessor);
                     byte[] collection=accessorBuild.getBuffer().array();
                     int tupleCount = accessorBuild.getTupleCount();
                     for (int k=0; k<tupleCount;k++){
@@ -174,13 +285,18 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
                         }
                         BF.add(fieldSelf);//add to bloomfilter
 
+                        //System.out.print(fieldSelf);
+                    }
+                    try {
+                        //Convert to byteBuffer
+                        ByteBuffer tempForBF = ByteBuffer.wrap(new Serializer().serialize(BF));
+                        FrameUtils.flushFrame(tempForBF,writers[1]);
+                    }catch(Exception e){
+                        System.out.println(e);
                     }
 
-
-                    //FrameUtils.appendToWriterSmallSet(writers[1],outputAppender ,bytes,0,bytes.length);
-
                     FrameUtils.flushFrame(bufferAccessor, writers[0]);
-                    ctx.setSharedObject(BF);
+
 
                 }
 
@@ -195,53 +311,6 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
 
                 @Override
                 public void close() throws HyracksDataException {
-                    BloomFilter<String> BF=new BloomFilter<String>(falsePositiveProbability,countAll);
-                    if(ctx.getSharedObject()!=null){
-                        Object BFObject=ctx.getSharedObject();
-                        BF= ( BloomFilter<String>) BFObject;//store indexes for sample
-                    }
-                    Serializer Serial=new Serializer();
-                    try {
-                        bytes = Serial.serialize(BF);
-                        int i=bytes.length;
-                        byte[] result = new byte[4];
-                        //由高位到低位
-                        result[0] = (byte)((i >> 24) & 0xFF);
-                        result[1] = (byte)((i >> 16) & 0xFF);
-                        result[2] = (byte)((i >> 8) & 0xFF);
-                        result[3] = (byte)(i & 0xFF);
-
-
-                        byte[] tempByte=new byte[bytes.length+result.length];
-                        for (int k=0;k<result.length;k++){
-                            tempByte[k]=result[k];
-                        }
-                        for ( int j=0;j<bytes.length;j++){
-                            tempByte[j+result.length]=bytes[j];
-                        }
-
-
-                        //由高位到低位
-                        int value=0;
-                        for ( i = 0; i < 4; i++) {
-                            int shift= (4 - 1 - i) * 8;
-                            value +=(tempByte[i] & 0x000000FF) << shift;//往高位游
-                        }
-                        System.out.println(value);
-
-                        FrameUtils.appendToWriterSmallSet(writers[1],outputAppender ,bytes,0,bytes.length);
-                        int a=(int)tempByte[bytes.length];
-
-                    }catch (Exception e){
-                        System.out.print(e);
-                    }
-
-
-
-
-
-
-
                     HyracksDataException hde = null;
                     try {
                         if (requiresMaterialization) {
@@ -291,9 +360,8 @@ public class SplitBFOperatorDescriptor extends AbstractOperatorDescriptor {
 
                 @Override
                 public void setOutputFrameWriter(int index, IFrameWriter writer, RecordDescriptor recordDesc) {
+
                     writers[index] = writer;
-
-
                 }
             };
         }

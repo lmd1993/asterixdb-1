@@ -46,7 +46,6 @@ import org.apache.hyracks.dataflow.std.connectors.Serializer;
 public class mergeBFOperatorDescriptor extends AbstractOperatorDescriptor {
     private final static int Merge_BF_ACTIVITY_ID = 0;
     public mergeBFOperatorDescriptor(IOperatorDescriptorRegistry spec){
-
         super(spec,1,1);
     }
     @Override

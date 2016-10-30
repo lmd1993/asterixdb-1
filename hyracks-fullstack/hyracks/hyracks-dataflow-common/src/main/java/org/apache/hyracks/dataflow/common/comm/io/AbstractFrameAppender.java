@@ -21,11 +21,7 @@ package org.apache.hyracks.dataflow.common.comm.io;
 
 import java.nio.ByteBuffer;
 
-import org.apache.hyracks.api.comm.FrameConstants;
-import org.apache.hyracks.api.comm.FrameHelper;
-import org.apache.hyracks.api.comm.IFrame;
-import org.apache.hyracks.api.comm.IFrameAppender;
-import org.apache.hyracks.api.comm.IFrameWriter;
+import org.apache.hyracks.api.comm.*;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.util.IntSerDeUtils;
 
@@ -86,15 +82,18 @@ public class AbstractFrameAppender implements IFrameAppender {
         return frame.getBuffer();
     }
 
+
     @Override
     public void write(IFrameWriter outWriter, boolean clearFrame) throws HyracksDataException {
-        getBuffer().clear();
-        outWriter.nextFrame(getBuffer());
-        if (clearFrame) {
-            frame.reset();
-            reset(getBuffer(), true);
-        }
+            getBuffer().clear();
+            outWriter.nextFrame(getBuffer());
+            if (clearFrame) {
+                frame.reset();
+                reset(getBuffer(), true);
+            }
     }
+
+
 
     protected boolean canHoldNewTuple(int fieldCount, int dataLength) throws HyracksDataException {
         if (hasEnoughSpace(fieldCount, dataLength)) {

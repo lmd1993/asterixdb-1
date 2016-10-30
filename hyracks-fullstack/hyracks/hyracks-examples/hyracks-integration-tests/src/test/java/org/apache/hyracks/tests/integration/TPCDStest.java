@@ -26,6 +26,7 @@ import org.apache.hyracks.api.dataflow.value.*;
 import org.apache.hyracks.data.std.accessors.PointableBinaryHashFunctionFactory;
 import org.apache.hyracks.dataflow.std.join.OptimizedHybridHashMultipleJoinOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.join.SampleForMultipleJoinOperatorDescriptor;
+import org.apache.hyracks.dataflow.std.result.ResulWriterOnlyBufferOperatorDescriptor;
 import org.junit.Test;
 
 import org.apache.hyracks.api.constraints.PartitionConstraintHelper;
@@ -359,7 +360,7 @@ public class TPCDStest extends AbstractIntegrationTest {
     }
 
     @Test
-    public void testBFsplit() throws Exception {
+    public void testBFsplitFirstGetBF() throws Exception {
         //This is the join without order and wait for the sample result
         final int outputArity = 2;
 
@@ -367,16 +368,11 @@ public class TPCDStest extends AbstractIntegrationTest {
 
         FileSplit[] storeSalesSplits = new FileSplit[] {
                 new FileSplit(NC1_ID, new FileReference(new File("data/tpch0.001/store_sales1905.tbl"))),
-                new FileSplit(NC2_ID,new FileReference(new File("data/tpch0.001/store_sales881.tbl")))
         };
-        storeSalesSplits[0].getPartition();
+        //storeSalesSplits[0].getPartition();
         IFileSplitProvider storeSalesSplitsProvider = new ConstantFileSplitProvider(storeSalesSplits);
 
-        File[] outputFile = new File[outputArity];
-        for (int i = 0; i < outputArity; i++) {
-            outputFile[i] = File.createTempFile("splitop", null);
-            outputFile[i].deleteOnExit();
-        }
+
 
         FileScanOperatorDescriptor storeSaleScanner = new FileScanOperatorDescriptor(spec, storeSalesSplitsProvider,
                 new DelimitedDataTupleParserFactory(storeSaleValueParserFactories, '|'), storeSaleDesc);
@@ -384,16 +380,78 @@ public class TPCDStest extends AbstractIntegrationTest {
         int countAll=1905;//Assume the whole number
         SplitBFOperatorDescriptor splitOp = new SplitBFOperatorDescriptor(spec, storeSaleDesc, outputArity,new int[]{1},countAll);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, splitOp,NC1_ID);
-        mergeBFOperatorDescriptor mBFOp=new mergeBFOperatorDescriptor(spec);
-        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, mBFOp,NC1_ID);
+        //mergeBFOperatorDescriptor mBFOp=new mergeBFOperatorDescriptor(spec);
+        //PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, mBFOp, NC1_ID);
 
 
-        IOperatorDescriptor printer[]= new IOperatorDescriptor[outputFile.length];
+        IOperatorDescriptor printer[]= new IOperatorDescriptor[2];
         for (int i = 0; i < outputArity; i++) {
             ResultSetId rsId = new ResultSetId(i);
             spec.addResultSetId(rsId);
-            printer[i] = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
-                    ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+            if (i==0) {
+                printer[i] = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                        ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+            }else{
+                printer[i]=new ResulWriterOnlyBufferOperatorDescriptor(spec, rsId, false, false,
+                        ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+            }
+            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer[i], NC1_ID);
+        }
+
+        spec.connect(new OneToOneConnectorDescriptor(spec), storeSaleScanner, 0, splitOp, 0);
+        for (int i = 0; i < outputArity; i++) {
+            spec.connect(new OneToOneConnectorDescriptor(spec), splitOp, i, printer[i], 0);
+        }
+
+        for (int i = 0; i < outputArity; i++) {
+            spec.addRoot(printer[i]);
+        }
+
+        File[] temp=new File[2];
+        temp[0]=new File("split0");
+        temp[1]=new File("split1");
+        runTestMultiResults(spec, temp);
+
+    }
+
+    @Test
+    public void testBFsplitSecondMergeBF() throws Exception {
+        //This is the join without order and wait for the sample result
+        final int outputArity = 2;
+
+        JobSpecification spec = new JobSpecification();
+
+        FileSplit[] storeSalesSplits = new FileSplit[] {new FileSplit(NC1_ID, new FileReference(new File("data/tpch0.001/store_sales1905.tbl"))),};
+        IFileSplitProvider storeSalesSplitsProvider = new ConstantFileSplitProvider(storeSalesSplits);
+        FileSplit[] webSalesSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File("data/tpch0.001/web_sales307.tbl"))) };
+
+        IFileSplitProvider webSalesSplitsProvider = new ConstantFileSplitProvider(webSalesSplits);
+
+
+
+        FileScanOperatorDescriptor storeSaleScanner = new FileScanOperatorDescriptor(spec, storeSalesSplitsProvider, new DelimitedDataTupleParserFactory(storeSaleValueParserFactories, '|'), storeSaleDesc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, storeSaleScanner, NC1_ID);
+
+
+        int countAll=1905;//Assume the whole number
+        SplitBFOperatorDescriptor splitOp = new SplitBFOperatorDescriptor(spec, storeSaleDesc, outputArity,new int[]{1},countAll);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, splitOp,NC1_ID);
+
+        mergeBFOperatorDescriptor mBFOp=new mergeBFOperatorDescriptor(spec);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, mBFOp, NC1_ID);
+
+
+        IOperatorDescriptor printer[]= new IOperatorDescriptor[2];
+        for (int i = 0; i < outputArity; i++) {
+            ResultSetId rsId = new ResultSetId(i);
+            spec.addResultSetId(rsId);
+            if (i==0) {
+                printer[i] = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                        ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+            }else{
+                printer[i]=new ResulWriterOnlyBufferOperatorDescriptor(spec, rsId, false, false,
+                        ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+            }
             PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer[i], NC1_ID);
         }
 
@@ -415,7 +473,7 @@ public class TPCDStest extends AbstractIntegrationTest {
 
     @Test
     public void testBFsplitTwoNodes() throws Exception {
-        //This is the join without order and wait for the sample result
+        //This is to simplify the whole process with just two nodes participating.
         final int outputArity = 2;
 
         JobSpecification spec = new JobSpecification();
@@ -423,8 +481,12 @@ public class TPCDStest extends AbstractIntegrationTest {
         FileSplit[] storeSalesSplits = new FileSplit[] {
                 new FileSplit(NC1_ID, new FileReference(new File("data/tpch0.001/store_sales1905.tbl")))
         };
-        storeSalesSplits[0].getPartition();
         IFileSplitProvider storeSalesSplitsProvider = new ConstantFileSplitProvider(storeSalesSplits);
+        FileSplit[] webSalesSplits = new FileSplit[] { new FileSplit(NC1_ID, new FileReference(new File(
+                "data/tpch0.001/web_sales307.tbl"))) };
+
+        IFileSplitProvider webSalesSplitsProvider = new ConstantFileSplitProvider(webSalesSplits);
+
 
         File[] outputFile = new File[outputArity];
         for (int i = 0; i < outputArity; i++) {

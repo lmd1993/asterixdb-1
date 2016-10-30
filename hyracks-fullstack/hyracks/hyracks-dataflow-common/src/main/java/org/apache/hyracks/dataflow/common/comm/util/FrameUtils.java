@@ -98,6 +98,18 @@ public class FrameUtils {
         }
         return flushedBytes;
     }
+    public static int appendToWriterSmallSet(IFrameWriter writer, IFrameTupleAppender frameTupleAppender, byte[] bytes,
+                                     int offset, int length) throws HyracksDataException {
+        int flushedBytes = 0;
+        ByteBuffer original= frameTupleAppender.getBuffer();
+        byte[] b = new byte[original.remaining()];
+        original.get(b);
+        frameTupleAppender.append(bytes, offset, length);
+        flushedBytes = frameTupleAppender.getBuffer().capacity();
+        frameTupleAppender.write(writer, true);
+
+        return flushedBytes;
+    }
 
     /**
      * @param writer
